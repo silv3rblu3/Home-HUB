@@ -2,12 +2,15 @@
 
 async function initShoppingLogic() {
     let shoppingData = [];
-    let currentView = 'store'; // 'store' or 'project'
+    let customTags = [];
+    let currentView = 'store'; 
     let editingItemId = null;
     let stream = null; 
+    let isSettingsOpen = false;
 
     // --- DOM Elements ---
     const stage = document.getElementById('shopping-list-stage');
+    const settingsStage = document.getElementById('shopping-settings-stage');
     const modal = document.getElementById('shop-item-modal');
     const form = document.getElementById('shop-item-form');
     const btnViewStore = document.getElementById('btn-view-store');
@@ -17,41 +20,110 @@ async function initShoppingLogic() {
     const scannerModal = document.getElementById('scanner-modal');
     const deleteBtn = document.getElementById('btn-delete-item');
     const projectDatalist = document.getElementById('project-datalist');
+    const shopSettingsBtn = document.getElementById('shop-settings-btn');
+    const toggles = document.getElementById('shop-view-toggles');
+    const actionBar = document.getElementById('shop-action-bar');
 
-    // --- 1. Dynamic Datalist Injector ---
+    // --- 1. Settings & Tag Management ---
+    const loadSettings = async () => {
+        // Load custom tags (defaulting to a few basics if empty)
+        customTags = await StateManager.getSystemSetting('shopping_custom_tags') || [
+            'General Groceries', 'Tahoe Maintenance', 'Jeep Repairs', 'Trailer Upgrades', 'Custom Fabrication'
+        ];
+        
+        // Load Inventory Toggle Pref
+        const autoCheck = await StateManager.getSystemSetting('shopping_auto_inv_check');
+        document.getElementById('setting-auto-inv-check').checked = autoCheck !== false; 
+        
+        renderTagSettings();
+    };
+
+    const renderTagSettings = () => {
+        const container = document.getElementById('tag-list-container');
+        container.innerHTML = '';
+        customTags.forEach(tag => {
+            const el = document.createElement('div');
+            el.style.cssText = 'background: var(--bg-main); border: 1px solid var(--border-color); padding: 5px 12px; border-radius: 15px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;';
+            el.innerHTML = `<span>${tag}</span> <span style="cursor: pointer; color: var(--danger-color); font-weight: bold;" title="Delete">x</span>`;
+            
+            el.querySelector('span:nth-child(2)').addEventListener('click', async () => {
+                customTags = customTags.filter(t => t !== tag);
+                await StateManager.setSystemSetting('shopping_custom_tags', customTags);
+                renderTagSettings();
+                loadDynamicProjects();
+            });
+            container.appendChild(el);
+        });
+    };
+
+    document.getElementById('add-tag-btn').addEventListener('click', async () => {
+        const input = document.getElementById('new-tag-input');
+        const val = input.value.trim();
+        if (val && !customTags.includes(val)) {
+            customTags.push(val);
+            await StateManager.setSystemSetting('shopping_custom_tags', customTags);
+            input.value = '';
+            renderTagSettings();
+            loadDynamicProjects();
+        }
+    });
+
+    document.getElementById('setting-auto-inv-check').addEventListener('change', async (e) => {
+        await StateManager.setSystemSetting('shopping_auto_inv_check', e.target.checked);
+    });
+
+    // Toggle Settings Pane
+    shopSettingsBtn.addEventListener('click', () => {
+        isSettingsOpen = !isSettingsOpen;
+        if (isSettingsOpen) {
+            stage.style.display = 'none';
+            toggles.style.display = 'none';
+            actionBar.style.display = 'none';
+            settingsStage.style.display = 'block';
+            shopSettingsBtn.style.color = 'var(--accent-primary)';
+        } else {
+            settingsStage.style.display = 'none';
+            stage.style.display = 'block';
+            toggles.style.display = 'flex';
+            actionBar.style.display = 'flex';
+            shopSettingsBtn.style.color = 'var(--text-secondary)';
+        }
+    });
+
+
+    // --- 2. Dynamic Datalist Injector ---
     const loadDynamicProjects = async () => {
         try {
             const activeProjects = await StateManager.getModuleData('projects');
-            // Keep the default base categories, but append actual active projects
-            let html = `
-                <option value="General Groceries">
-                <option value="Tahoe Maintenance">
-                <option value="Jeep Repairs">
-                <option value="Trailer Upgrades">
-                <option value="Custom Fabrication">
-            `;
+            let html = '';
             
+            // Add custom manual tags first
+            customTags.forEach(tag => {
+                html += `<option value="${tag}">`;
+            });
+            
+            // Append active projects dynamically
             if (activeProjects && activeProjects.length > 0) {
-                // Filter out completed ones if desired, and map the titles
-                activeProjects.forEach(proj => {
-                    if (proj.status !== 'Completed') {
+                // If it's the uploaded structure [{tasks: []}] handle that
+                let taskArray = activeProjects[0]?.tasks ? activeProjects[0].tasks : activeProjects;
+                taskArray.forEach(proj => {
+                    if (proj.status !== 'Completed' && !customTags.includes(proj.title)) {
                         html += `<option value="${proj.title}">`;
                     }
                 });
             }
             projectDatalist.innerHTML = html;
         } catch (err) {
-            console.warn("Could not load dynamic projects for datalist", err);
+            console.warn("Could not load dynamic projects for datalist");
         }
     };
 
-    // --- 2. Load Core Data ---
+    // --- 3. Load Data & Core Rendering ---
     const loadData = async () => {
         shoppingData = await StateManager.getModuleData('shopping');
         renderList();
     };
 
-    // --- 3. Core Rendering Engine ---
     const renderList = (filterText = '') => {
         stage.innerHTML = '';
         
@@ -65,7 +137,7 @@ async function initShoppingLogic() {
         }
 
         if (filteredData.length === 0) {
-            stage.innerHTML = `<div class="app-card" style="text-align: center; color: var(--text-secondary);">No items found. Click 'Add Item' to start.</div>`;
+            stage.innerHTML = `<div class="app-card" style="text-align: center; color: var(--text-secondary);">No items found. Click '➕ Add Item' to start.</div>`;
             return;
         }
 
@@ -88,11 +160,8 @@ async function initShoppingLogic() {
             item._bestStore = bestStore;
             item._lowestPrice = lowestPrice === Infinity ? null : lowestPrice;
 
-            if (currentView === 'store') {
-                groupKey = bestStore;
-            } else {
-                groupKey = item.projectTag || 'General Groceries & Supplies';
-            }
+            if (currentView === 'store') groupKey = bestStore;
+            else groupKey = item.projectTag || 'General Supplies';
 
             if (!groups[groupKey]) groups[groupKey] = [];
             groups[groupKey].push(item);
@@ -122,7 +191,7 @@ async function initShoppingLogic() {
                     <div class="item-details" style="cursor: pointer;" onclick="openItemEditor('${item.id}')">
                         <h5 class="item-title">${item.itemName}</h5>
                         <div style="font-size: 0.85rem; color: var(--text-secondary);">
-                            <strong>Priority:</strong> ${item.priority} | <strong>Project:</strong> ${item.projectTag || 'None'}
+                            <strong>Priority:</strong> ${item.priority} | <strong>Tag:</strong> ${item.projectTag || 'None'}
                         </div>
                         ${priceBadge} ${stashBadge}
                     </div>
@@ -148,11 +217,10 @@ async function initShoppingLogic() {
         const row = document.createElement('div');
         row.className = 'price-row';
         row.innerHTML = `
-            <input type="text" class="app-input price-store-input" placeholder="Store (e.g., Home Depot, WinCo)" value="${store}" required>
+            <input type="text" class="app-input price-store-input" placeholder="Store (e.g., WinCo)" value="${store}" required>
             <input type="number" class="app-input price-val-input" placeholder="0.00" step="0.01" min="0" value="${price}" required>
             <button type="button" class="btn-outline remove-price-btn" style="color: var(--danger-color); border-color: var(--danger-color); padding: 8px;">X</button>
         `;
-        
         row.querySelector('.remove-price-btn').addEventListener('click', () => row.remove());
         priceTrackerContainer.appendChild(row);
     };
@@ -172,11 +240,9 @@ async function initShoppingLogic() {
             document.getElementById('item-project').value = item.projectTag || '';
             document.getElementById('item-stash-check').checked = item.checkStash || false;
             
-            if (item.prices && item.prices.length > 0) {
-                item.prices.forEach(p => addPriceRow(p.store, p.price));
-            } else {
-                addPriceRow();
-            }
+            if (item.prices && item.prices.length > 0) item.prices.forEach(p => addPriceRow(p.store, p.price));
+            else addPriceRow();
+            
             deleteBtn.style.display = 'block';
         } else {
             document.getElementById('shop-modal-title').innerText = 'Add Supply';
@@ -193,7 +259,8 @@ async function initShoppingLogic() {
         modal.showModal();
     };
 
-    // --- 4. Event Listeners ---
+
+    // --- 4. Event Listeners & Inventory Hook ---
     btnViewStore.addEventListener('click', () => {
         currentView = 'store';
         btnViewStore.classList.add('active');
@@ -214,9 +281,27 @@ async function initShoppingLogic() {
     document.getElementById('close-shop-modal').addEventListener('click', () => modal.close());
     document.getElementById('btn-add-price-row').addEventListener('click', () => addPriceRow());
 
+    // FORM SUBMIT WITH INVENTORY PRE-CHECK
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         
+        const itemName = document.getElementById('item-name').value.trim();
+        const autoCheck = document.getElementById('setting-auto-inv-check').checked;
+        
+        // The Future Inventory Link Check
+        if (autoCheck && !editingItemId) {
+            try {
+                // Fails silently and continues if inventory module hasn't been built/initialized yet
+                const invData = await StateManager.getModuleData('inventory').catch(() => []);
+                const match = invData.find(i => i.itemName.toLowerCase() === itemName.toLowerCase());
+                
+                if (match) {
+                    const proceed = await UIBridge.confirm("Inventory Alert", `The system shows you already have '${itemName}' logged in your inventory. Are you sure you want to add it to the shopping list?`);
+                    if (!proceed) return; // Halt save if user cancels
+                }
+            } catch (e) { /* Inventory not ready, bypass */ }
+        }
+
         const priceRows = document.querySelectorAll('.price-row');
         const prices = [];
         priceRows.forEach(row => {
@@ -227,7 +312,7 @@ async function initShoppingLogic() {
 
         const itemData = {
             id: document.getElementById('item-id').value,
-            itemName: document.getElementById('item-name').value.trim(),
+            itemName: itemName,
             priority: document.getElementById('item-priority').value,
             projectTag: document.getElementById('item-project').value.trim(),
             checkStash: document.getElementById('item-stash-check').checked,
@@ -256,10 +341,10 @@ async function initShoppingLogic() {
         }
     });
 
-    // --- 5. Intelligent Barcode Scanner (UPC Memory) ---
+    // --- 5. Barcode Scanner ---
     const startScanner = async () => {
         if (!('BarcodeDetector' in window)) {
-            UIBridge.showToast('Barcode scanning is not supported on this device/browser.', 'error');
+            UIBridge.showToast('Barcode scanning is not supported on this device.', 'error');
             return;
         }
 
@@ -283,29 +368,23 @@ async function initShoppingLogic() {
                             stopScanner();
                             
                             const upc = barcodes[0].rawValue;
-                            
-                            // Check local memory bank
-                            const upcMap = await StateManager.getModuleData('upc_map');
+                            const upcMap = await StateManager.getModuleData('upc_map').catch(() => []);
                             const knownItem = upcMap.find(i => i.upc === upc);
                             
                             if (knownItem) {
                                 document.getElementById('item-name').value = knownItem.itemName;
-                                UIBridge.showToast('Product recognized from local memory!', 'success');
+                                UIBridge.showToast('Product recognized!', 'success');
                             } else {
-                                // Not recognized - Prompt user and save it
-                                const customName = await UIBridge.prompt('Unknown Barcode', `UPC: ${upc}. Enter product name to save it:`);
+                                const customName = await UIBridge.prompt('Unknown Barcode', `Enter product name for ${upc}:`);
                                 if (customName) {
                                     document.getElementById('item-name').value = customName;
                                     await StateManager.setModuleRecord('upc_map', { id: 'upc_' + upc, upc: upc, itemName: customName });
-                                    UIBridge.showToast('Barcode linked and saved for next time.', 'success');
                                 } else {
                                     document.getElementById('item-name').value = `UPC: ${upc}`;
                                 }
                             }
                         }
-                    } catch (err) {
-                        console.error('Barcode detection failed:', err);
-                    }
+                    } catch (err) { }
                 }
             }, 500);
 
@@ -313,10 +392,9 @@ async function initShoppingLogic() {
                 clearInterval(scanLoop);
                 stopScanner();
             };
-
         } catch (err) {
             stopScanner();
-            UIBridge.showToast('Camera access denied or unavailable.', 'error');
+            UIBridge.showToast('Camera access denied.', 'error');
         }
     };
 
@@ -331,23 +409,8 @@ async function initShoppingLogic() {
 
     document.getElementById('btn-scan-barcode').addEventListener('click', startScanner);
 
-    // --- 6. Inter-Module Communication Hooks ---
-    EventBroker.subscribe('SHOPPING:QUICK_ADD', async (payload) => {
-        const newItem = {
-            id: 'shop_quick_' + Date.now(),
-            itemName: payload.itemName || payload.rawText,
-            priority: 'Normal',
-            projectTag: 'Quick Add',
-            checkStash: false,
-            prices: payload.storeTarget !== 'Any' ? [{ store: payload.storeTarget, price: 0 }] : [],
-            dateAdded: new Date().toISOString()
-        };
-        
-        await StateManager.setModuleRecord('shopping', newItem);
-        loadData(); 
-    });
-
     // Boot Sequence
+    await loadSettings();
     await loadDynamicProjects();
     loadData();
 }

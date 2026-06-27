@@ -132,8 +132,26 @@
 
 .toast-success { border-left-color: var(--success-color); }
 .toast-error { border-left-color: var(--danger-color); }
+.toast-warning { border-left-color: var(--warning-color); }
 
 @keyframes toast-slide {
     from { transform: translateY(20px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
+}
+
+/* ============================================================== */
+/* GLOBAL NATIVE DIALOG STYLING (Applies to all modules)          */
+/* ============================================================== */
+dialog {
+    background: var(--bg-surface);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    margin: auto; /* Dead center */
+    padding: 25px;
+}
+dialog::backdrop {
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(3px);
 }
