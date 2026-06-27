@@ -166,7 +166,7 @@ function renderShoppingApp() {
         <div id="shopping-settings-stage" style="display: none; animation: fadeIn 0.3s;">
             <div class="app-card">
                 <h3 style="margin-top: 0; color: var(--accent-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">Module Settings</h3>
-                
+                <button id="close-shopping-settings" class="btn-outline" style="padding: 5px 10px;">❌ Close</button>
                 <h4 style="margin-bottom: 10px;">Custom Project Tags & Categories</h4>
                 <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 15px;">Manage the tags available in the drop-down when adding items. (Active projects from the Projects module are added automatically).</p>
                 
