@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Home HUB</title>
+    
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#1e1e1e">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    
+    <link rel="stylesheet" href="./css/variables.css">
+    <link rel="stylesheet" href="./css/main.css">
+    <link rel="stylesheet" href="./css/components.css">
+</head>
+<body>
+
+    <header id="global-header">
+        <div class="header-left">
+            <button id="mobile-menu-toggle" class="icon-btn">☰</button>
+            <h1 class="brand-title">Home HUB</h1>
+        </div>
+        
+        <div class="header-center">
+            <input type="text" id="omni-search" class="app-input" placeholder="Search across all modules...">
+        </div>
+        
+        <div class="header-right">
+            <span id="db-status-indicator" class="status-dot status-green" title="Database Synced"></span>
+            <button id="global-quick-add-btn" class="btn-primary">➕ Add</button>
+        </div>
+    </header>
+
+    <div id="layout-wrapper">
+        
+        <nav id="sidebar">
+            <div id="module-nav-list" class="nav-group">
+                </div>
+            
+            <div class="nav-spacer"></div>
+            
+            <div class="nav-group system-group">
+                <button class="nav-btn" data-module="settings">⚙️ Settings</button>
+            </div>
+        </nav>
+
+        <main id="app-stage">
+            </main>
+    </div>
+
+    <div id="notification-container"></div>
+    <dialog id="global-dialog"></dialog>
+
+    <script src="./core/state.js"></script>
+    <script src="./core/events.js"></script>
+    <script src="./core/ui.js"></script>
+    <script src="./core/parser.js"></script>
+    <script src="./core/app.js"></script>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => console.log('Service Worker registered.', reg))
+                    .catch(err => console.error('Service Worker registration failed.', err));
+            });
+        }
+    </script>
+</body>
+</html>

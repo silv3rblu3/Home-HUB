@@ -1,0 +1,26 @@
+[
+    {
+        "id": "dashboard",
+        "name": "Home Dashboard",
+        "icon": "🏠",
+        "path": "./apps/dashboard/"
+    },
+    {
+        "id": "shopping",
+        "name": "Shopping Lists",
+        "icon": "🛒",
+        "path": "./apps/shopping/"
+    },
+    {
+        "id": "vehicles",
+        "name": "Garage & Vehicles",
+        "icon": "🚙",
+        "path": "./apps/vehicles/"
+    },
+    {
+        "id": "projects",
+        "name": "Projects & Tasks",
+        "icon": "📋",
+        "path": "./apps/projects/"
+    }
+]
