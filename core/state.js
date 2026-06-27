@@ -4,7 +4,7 @@
  */
 const StateManager = (() => {
     const DB_NAME = 'HomeHubEcosystemDB';
-    const DB_VERSION = 1;
+    const DB_VERSION = 2; // Incremented to ensure correct store initialization
     let dbInstance = null;
 
     /**
@@ -18,57 +18,22 @@ const StateManager = (() => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
 
             request.onupgradeneeded = (event) => {
-                const DB_VERSION = 2; // Incremented to trigger database upgrade
-    
-    // ... (Keep the initDatabase wrapper the same, just update the inner block)
-
-    /**
-     * Initializes the connection to IndexedDB and verifies object stores exist.
-     * @returns {Promise<IDBDatabase>}
-     */
-    const initDatabase = () => {
-        return new Promise((resolve, reject) => {
-            if (dbInstance) return resolve(dbInstance);
-
-            const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-            request.onupgradeneeded = (event) => {
                 const db = event.target.result;
+                const stores = [
+                    'system_settings', 
+                    'module_dashboard', 
+                    'module_projects', 
+                    'module_shopping', 
+                    'module_vehicles', 
+                    'module_upc_map'
+                ];
                 
-                // Core layout and global environment configuration properties
-                if (!db.objectStoreNames.contains('system_settings')) {
-                    db.createObjectStore('system_settings', { keyPath: 'key' });
-                }
-                // Isolated operational storage units for modules
-                if (!db.objectStoreNames.contains('module_dashboard')) {
-                    db.createObjectStore('module_dashboard', { keyPath: 'id' });
-                }
-                if (!db.objectStoreNames.contains('module_projects')) {
-                    db.createObjectStore('module_projects', { keyPath: 'id' });
-                }
-                if (!db.objectStoreNames.contains('module_shopping')) {
-                    db.createObjectStore('module_shopping', { keyPath: 'id' });
-                }
-                if (!db.objectStoreNames.contains('module_vehicles')) {
-                    db.createObjectStore('module_vehicles', { keyPath: 'id' });
-                }
-                // NEW: UPC Memory Bank for offline barcode scanning
-                if (!db.objectStoreNames.contains('module_upc_map')) {
-                    db.createObjectStore('module_upc_map', { keyPath: 'id' });
-                }
+                stores.forEach(storeName => {
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        db.createObjectStore(storeName, { keyPath: 'id' });
+                    }
+                });
             };
-
-            request.onsuccess = (event) => {
-                dbInstance = event.target.result;
-                resolve(dbInstance);
-            };
-
-            request.onerror = (event) => {
-                console.error('Database critical initialization failure:', event.target.error);
-                reject(event.target.error);
-            };
-        });
-    };
 
             request.onsuccess = (event) => {
                 dbInstance = event.target.result;
@@ -84,8 +49,6 @@ const StateManager = (() => {
 
     /**
      * Safely targets an object store and executes an explicit transaction mode.
-     * @param {string} storeName - target table
-     * @param {string} mode - 'readonly' or 'readwrite'
      */
     const getStore = async (storeName, mode) => {
         const db = await initDatabase();
@@ -94,108 +57,86 @@ const StateManager = (() => {
     };
 
     return {
-        /**
-         * Fetches all records from an isolated module data store.
-         * @param {string} moduleId 
-         * @returns {Promise<Array>}
-         */
+        // --- Core Module Data Access ---
         getModuleData: async (moduleId) => {
-            return new Promise(async (resolve) => {
-                try {
-                    const store = await getStore(`module_${moduleId}`, 'readonly');
-                    const request = store.getAll();
-                    request.onsuccess = () => resolve(request.result || []);
-                    request.onerror = () => resolve([]);
-                } catch (err) {
-                    console.error(`Failed to read data for module: ${moduleId}`, err);
-                    resolve([]);
-                }
-            });
+            try {
+                const store = await getStore(`module_${moduleId}`, 'readonly');
+                return new Promise((resolve) => {
+                    const req = store.getAll();
+                    req.onsuccess = () => resolve(req.result || []);
+                    req.onerror = () => {
+                        console.error(`Read Error in ${moduleId}:`, req.error);
+                        resolve([]);
+                    };
+                });
+            } catch (err) { 
+                console.error(`Get Error in ${moduleId}:`, err); 
+                return []; 
+            }
         },
 
-        /**
-         * Commits an absolute record snapshot to a specific module data store.
-         * @param {string} moduleId 
-         * @param {Object} dataObject - Record payload containing a unique 'id' key path
-         */
         setModuleRecord: async (moduleId, dataObject) => {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const store = await getStore(`module_${moduleId}`, 'readwrite');
-                    const request = store.put(dataObject);
-                    request.onsuccess = () => {
+            try {
+                const store = await getStore(`module_${moduleId}`, 'readwrite');
+                return new Promise((resolve, reject) => {
+                    const req = store.put(dataObject);
+                    req.onsuccess = () => {
                         UIBridge.updateSyncIndicator(true);
                         resolve(true);
                     };
-                    request.onerror = () => {
+                    req.onerror = () => {
+                        console.error(`Save Error in ${moduleId}:`, req.error);
                         UIBridge.updateSyncIndicator(false);
-                        reject(request.error);
+                        reject(req.error);
                     };
-                } catch (err) {
-                    UIBridge.updateSyncIndicator(false);
-                    reject(err);
-                }
-            });
+                });
+            } catch (err) { 
+                console.error(`Transaction Error in ${moduleId}:`, err); 
+                UIBridge.updateSyncIndicator(false);
+                throw err; 
+            }
         },
 
-        /**
-         * Purges a targeted record matching a key index from a module dataset.
-         * @param {string} moduleId 
-         * @param {string} recordId 
-         */
         deleteModuleRecord: async (moduleId, recordId) => {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const store = await getStore(`module_${moduleId}`, 'readwrite');
-                    const request = store.delete(recordId);
-                    request.onsuccess = () => resolve(true);
-                    request.onerror = () => reject(request.error);
-                } catch (err) {
-                    reject(err);
-                }
-            });
+            try {
+                const store = await getStore(`module_${moduleId}`, 'readwrite');
+                store.delete(recordId);
+            } catch (err) {
+                console.error(`Delete Error in ${moduleId}:`, err);
+            }
         },
 
-        /**
-         * Retrieves global configuration variables from the system namespace.
-         * @param {string} key 
-         * @returns {Promise<any>}
-         */
+        // --- Compatibility Aliases ---
+        // These ensure different naming conventions across modules still function
+        getAppData: async (moduleId) => await StateManager.getModuleData(moduleId),
+        setAppData: async (moduleId, data) => {
+            if (Array.isArray(data)) {
+                for(let item of data) await StateManager.setModuleRecord(moduleId, item);
+            } else {
+                await StateManager.setModuleRecord(moduleId, data);
+            }
+        },
+
+        // --- System Settings ---
         getSystemSetting: async (key) => {
-            return new Promise(async (resolve) => {
-                try {
-                    const store = await getStore('system_settings', 'readonly');
-                    const request = store.get(key);
-                    request.onsuccess = () => resolve(request.result ? request.result.value : null);
-                    request.onerror = () => resolve(null);
-                } catch (err) {
-                    resolve(null);
-                }
-            });
+            try {
+                const store = await getStore('system_settings', 'readonly');
+                return new Promise((resolve) => {
+                    const req = store.get(key);
+                    req.onsuccess = () => resolve(req.result ? req.result.value : null);
+                    req.onerror = () => resolve(null);
+                });
+            } catch (err) { return null; }
         },
 
-        /**
-         * Saves a specific environment setting key-value pair.
-         * @param {string} key 
-         * @param {any} value 
-         */
         setSystemSetting: async (key, value) => {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const store = await getStore('system_settings', 'readwrite');
-                    const request = store.put({ key, value });
-                    request.onsuccess = () => resolve(true);
-                    request.onerror = () => reject(request.error);
-                } catch (err) {
-                    reject(err);
-                }
-            });
+            try {
+                const store = await getStore('system_settings', 'readwrite');
+                store.put({ id: key, key: key, value: value });
+            } catch (err) { console.error('Settings Save Error:', err); }
         },
 
-        /**
-         * Pulls data from every object store and compiles a single system export string.
-         * @returns {Promise<string>} JSON string package
-         */
+        // --- Master DB Management ---
         exportMasterBackup: async () => {
             const db = await initDatabase();
             const backupPayload = {
@@ -217,26 +158,15 @@ const StateManager = (() => {
             return JSON.stringify(backupPayload, null, 2);
         },
 
-        /**
-         * Accepts a master backup file string and runs an absolute transactional rewrite.
-         * @param {string} jsonStringString 
-         * @returns {Promise<boolean>}
-         */
-        importMasterBackup: async (jsonStringString) => {
+        importMasterBackup: async (jsonString) => {
             return new Promise(async (resolve, reject) => {
                 try {
-                    const backup = JSON.parse(jsonStringString);
-                    if (!backup.stores || !backup.version) {
-                        throw new Error('Malformed backup object hierarchy missing target stores.');
-                    }
-
+                    const backup = JSON.parse(jsonString);
                     const db = await initDatabase();
                     for (const storeName in backup.stores) {
                         if (db.objectStoreNames.contains(storeName)) {
                             const tx = db.transaction(storeName, 'readwrite');
                             const store = tx.objectStore(storeName);
-                            
-                            // Clear existing metrics before writing archive indices
                             store.clear();
                             for (const item of backup.stores[storeName]) {
                                 store.put(item);
@@ -245,7 +175,7 @@ const StateManager = (() => {
                     }
                     resolve(true);
                 } catch (err) {
-                    console.error('Master database restore crash routine initialized:', err);
+                    console.error('Master database restore failed:', err);
                     reject(err);
                 }
             });
