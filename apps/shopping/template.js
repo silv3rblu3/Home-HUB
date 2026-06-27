@@ -113,6 +113,22 @@ function renderShoppingApp() {
             align-items: center;
         }
 
+        /* Clean Settings Icon Button */
+        #shop-settings-btn {
+            background: transparent;
+            border: none;
+            font-size: 1.4rem;
+            cursor: pointer;
+            padding: 0 5px;
+            transition: transform 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #shop-settings-btn:hover {
+            transform: rotate(45deg);
+        }
+
         /* Barcode Scanner Overlay */
         #scanner-container {
             width: 100%;
@@ -129,9 +145,8 @@ function renderShoppingApp() {
     <div style="max-width: 1000px; margin: 0 auto;">
         
         <div class="shop-toolbar">
-            <h2 style="margin: 0; color: var(--accent-primary); display: flex; align-items: center; gap: 10px;">
+            <h2 style="margin: 0; color: var(--accent-primary);">
                 🛒 Logistics & Supplies
-                <button id="shop-settings-btn" class="icon-btn" style="font-size: 1.2rem; color: var(--text-secondary);" title="Module Settings">⚙️</button>
             </h2>
             
             <div class="view-toggle" id="shop-view-toggles">
@@ -139,9 +154,10 @@ function renderShoppingApp() {
                 <button class="view-btn" id="btn-view-project">By Project</button>
             </div>
 
-            <div style="display: flex; gap: 10px; flex: 1; min-width: 250px;" id="shop-action-bar">
-                <input type="text" id="shop-filter" class="app-input" placeholder="Filter items...">
+            <div style="display: flex; gap: 12px; flex: 1; min-width: 250px; align-items: center;" id="shop-action-bar">
+                <input type="text" id="shop-filter" class="app-input" placeholder="Filter items..." style="flex: 1;">
                 <button id="add-item-btn" class="btn-primary" style="white-space: nowrap;">➕ Add Item</button>
+                <button id="shop-settings-btn" title="Module Settings">⚙️</button>
             </div>
         </div>
 
